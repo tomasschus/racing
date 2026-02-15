@@ -8,6 +8,8 @@ import { Car } from './Car';
 import { Track } from './Track';
 import { CameraFollow } from './CameraFollow';
 import { RaceManager } from './RaceManager';
+import { Minimap } from './Minimap';
+import { SpeedDisplay } from './SpeedDisplay';
 import { useGameStore } from '../store/useGameStore';
 
 // Offset fijo del sol (dirección de la luz)
@@ -58,15 +60,18 @@ export function Game() {
   return (
     <MapProvider>
       <RaceManager />
-      <div
-        ref={containerRef}
-        tabIndex={0}
-        autoFocus
-        style={{ width: '100%', height: '100%', outline: 'none', cursor: 'pointer' }}
-        onClick={() => containerRef.current?.focus()}
-        onPointerDown={() => containerRef.current?.focus()}
-      >
-        <Canvas
+      <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <Minimap />
+        <SpeedDisplay />
+        <div
+          ref={containerRef}
+          tabIndex={0}
+          autoFocus
+          style={{ width: '100%', height: '100%', outline: 'none', cursor: 'pointer' }}
+          onClick={() => containerRef.current?.focus()}
+          onPointerDown={() => containerRef.current?.focus()}
+        >
+          <Canvas
           shadows="soft"
           gl={{ antialias: true, powerPreference: 'high-performance' }}
           camera={{ fov: 50, near: 0.1, far: 2000 }}
@@ -92,6 +97,7 @@ export function Game() {
           <CameraFollow />
         </PhysicsWorld>
         </Canvas>
+        </div>
       </div>
     </MapProvider>
   );
