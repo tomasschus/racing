@@ -1,11 +1,14 @@
 import { useFrame, useThree } from "@react-three/fiber";
-import { useRef, useEffect } from "react";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useGameStore } from "../store/useGameStore";
 
-const LERP_FACTOR = 0.12;
+const LERP_FACTOR = 0.08;
 const HEIGHT_OFFSET = 3.5;
 const DISTANCE_OFFSET = 10;
+const SPEED_PULL_CLOSER = 0.1; // al acelerar, la cámara se acerca (menos distancia)
+const SPEED_LIFT = 0.045; // al acelerar, la cámara sube un poco
+const MIN_DISTANCE = 5;
 const MOUSE_SENSITIVITY = 0.004;
 const VERTICAL_MIN = 0.15;
 const VERTICAL_MAX = Math.PI * 0.45;
@@ -64,7 +67,8 @@ export function CameraFollow() {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       orbitDistance.current = THREE.MathUtils.clamp(
-        orbitDistance.current + e.deltaY * ZOOM_SENSITIVITY * orbitDistance.current,
+        orbitDistance.current +
+          e.deltaY * ZOOM_SENSITIVITY * orbitDistance.current,
         ZOOM_MIN,
         ZOOM_MAX,
       );
@@ -116,10 +120,17 @@ export function CameraFollow() {
         orbitTheta.current = Math.atan2(-vx, -vz);
       }
 
+      // Al acelerar: un poco más cerca y muy poco más arriba
+      const distance = Math.max(
+        MIN_DISTANCE,
+        orbitDistance.current - speed * SPEED_PULL_CLOSER,
+      );
+      const height = HEIGHT_OFFSET + speed * SPEED_LIFT;
+
       targetPos.current.set(
-        px + dir.x * orbitDistance.current,
-        py + Math.min(HEIGHT_OFFSET + speed * 0.2, 12),
-        pz + dir.z * orbitDistance.current,
+        px + dir.x * distance,
+        py + Math.min(height, 6),
+        pz + dir.z * distance,
       );
     }
 

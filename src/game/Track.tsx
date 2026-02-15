@@ -1,89 +1,7 @@
 import { useMemo } from 'react';
 import { RigidBody, CuboidCollider, CoefficientCombineRule } from '@react-three/rapier';
 import * as THREE from 'three';
-
-// ─── Parámetros del circuito ───
-const ROAD_WIDTH = 30;
-const HALF_ROAD = ROAD_WIDTH / 2;
-const WALL_HEIGHT = 3;
-const WALL_THICKNESS = 1.2;
-
-// ─── Circuito grande tipo GP ───
-// Aproximadamente 700 x 500 unidades
-// Sentido horario visto desde arriba
-const TRACK_POINTS: [number, number][] = [
-  // ═══ RECTA DE META (sur, yendo a la derecha) ═══
-  [0, 0],
-  [50, 0],
-  [100, 0],
-  [160, 0],
-  [220, 0],
-  [280, 0],
-  [340, 0],
-
-  // ═══ CURVA 1: amplia a la derecha ═══
-  [380, 10],
-  [410, 30],
-  [430, 60],
-  [440, 100],
-
-  // ═══ CHICANE 1: S rápida ═══
-  [435, 140],
-  [415, 165],
-  [430, 195],
-  [450, 215],
-
-  // ═══ RECTA NORESTE ═══
-  [455, 250],
-  [450, 290],
-
-  // ═══ CURVA 2: horquilla cerrada (hairpin) ═══
-  [435, 320],
-  [410, 340],
-  [375, 350],
-  [340, 340],
-  [320, 320],
-
-  // ═══ CONTRACURVA: S larga descendiendo ═══
-  [310, 290],
-  [320, 260],
-  [300, 235],
-  [270, 220],
-  [240, 235],
-  [230, 265],
-
-  // ═══ RECTA INTERMEDIA ═══
-  [220, 300],
-  [200, 340],
-
-  // ═══ CURVA 3: sweeper amplio a la izquierda ═══
-  [175, 375],
-  [140, 400],
-  [100, 415],
-  [55, 410],
-
-  // ═══ CHICANE 2: S técnica ═══
-  [20, 390],
-  [-10, 365],
-  [5, 335],
-  [30, 310],
-  [10, 280],
-
-  // ═══ RECTA LATERAL OESTE ═══
-  [-10, 250],
-  [-15, 200],
-  [-10, 150],
-
-  // ═══ CURVA 4: rápida con contracurva ═══
-  [-20, 120],
-  [-40, 95],
-  [-55, 65],
-  [-45, 35],
-
-  // ═══ CURVA FINAL: regreso a meta ═══
-  [-25, 15],
-  [-10, 5],
-];
+import { useMap } from './MapContext';
 
 /** Genera una curva suave Catmull-Rom a partir de los puntos 2D del circuito */
 function buildTrackCurve(points: [number, number][], segments: number) {
@@ -135,7 +53,13 @@ function buildRoadGeometry(sampled: THREE.Vector3[], halfWidth: number) {
 }
 
 /** Genera colliders de pared (segmentos de cuboides) a lo largo de un borde */
-function wallSegments(sampled: THREE.Vector3[], offsetSign: number, halfWidth: number) {
+function wallSegments(
+  sampled: THREE.Vector3[],
+  offsetSign: number,
+  halfWidth: number,
+  wallHeight: number,
+  wallThickness: number,
+) {
   const segs: { pos: [number, number, number]; halfLen: number; rotY: number }[] = [];
   const step = 4;
   for (let i = 0; i < sampled.length; i += step) {
@@ -146,10 +70,10 @@ function wallSegments(sampled: THREE.Vector3[], offsetSign: number, halfWidth: n
     dir.normalize();
     const right = new THREE.Vector3(-dir.z, 0, dir.x);
     const mid = curr.clone().add(next).multiplyScalar(0.5);
-    mid.add(right.clone().multiplyScalar(offsetSign * (halfWidth + WALL_THICKNESS / 2 + 0.3)));
+    mid.add(right.clone().multiplyScalar(offsetSign * (halfWidth + wallThickness / 2 + 0.3)));
     const rotY = Math.atan2(dir.x, dir.z);
     segs.push({
-      pos: [mid.x, WALL_HEIGHT / 2, mid.z],
+      pos: [mid.x, wallHeight / 2, mid.z],
       halfLen: len / 2 + 0.5,
       rotY,
     });
@@ -203,7 +127,7 @@ function StartFinishLine({ sampled }: { sampled: THREE.Vector3[] }) {
   );
 }
 
-function CurbStripes({ sampled }: { sampled: THREE.Vector3[] }) {
+function CurbStripes({ sampled, halfRoad }: { sampled: THREE.Vector3[]; halfRoad: number }) {
   const stripes: JSX.Element[] = [];
   const step = 8;
   for (let i = 0; i < sampled.length; i += step) {
@@ -214,7 +138,7 @@ function CurbStripes({ sampled }: { sampled: THREE.Vector3[] }) {
     const rotY = Math.atan2(dir.x, dir.z);
 
     for (const sign of [-1, 1]) {
-      const p = curr.clone().add(right.clone().multiplyScalar(sign * (HALF_ROAD - 1.2)));
+      const p = curr.clone().add(right.clone().multiplyScalar(sign * (halfRoad - 1.2)));
       const color = (i / step) % 2 === 0 ? '#cc2222' : '#f0f0f0';
       stripes.push(
         <mesh
@@ -250,9 +174,8 @@ function CenterLine({ sampled }: { sampled: THREE.Vector3[] }) {
   return <>{dashes}</>;
 }
 
-function Obstacles({ sampled }: { sampled: THREE.Vector3[] }) {
+function Obstacles({ sampled, halfRoad }: { sampled: THREE.Vector3[]; halfRoad: number }) {
   const obstacles: { pos: [number, number, number]; size: [number, number, number]; color: string }[] = [];
-  // Más obstáculos para la pista más grande
   const spots = [40, 100, 180, 260, 340, 420, 500, 580, 660, 740, 820, 900];
   for (const idx of spots) {
     if (idx >= sampled.length) continue;
@@ -260,7 +183,7 @@ function Obstacles({ sampled }: { sampled: THREE.Vector3[] }) {
     const next = sampled[(idx + 1) % sampled.length];
     const dir = new THREE.Vector3().subVectors(next, p).normalize();
     const right = new THREE.Vector3(-dir.z, 0, dir.x);
-    const offset = Math.sin(idx * 5.7) * HALF_ROAD * 0.5;
+    const offset = Math.sin(idx * 5.7) * halfRoad * 0.5;
     const pos = p.clone().add(right.clone().multiplyScalar(offset));
     obstacles.push({
       pos: [pos.x, 0.5, pos.z],
@@ -269,21 +192,29 @@ function Obstacles({ sampled }: { sampled: THREE.Vector3[] }) {
     });
   }
 
+  // Collider mucho más grande que la malla: el auto rebota antes de llegar al modelo visible
+  const COLLIDER_PADDING = 0.9;
+  // Malla a escala reducida para que quede dentro del collider y nunca se vea incrustado
+  const VISUAL_SCALE = 0.72;
   return (
     <>
       <RigidBody type="fixed" colliders={false}>
         {obstacles.map((o, i) => (
           <CuboidCollider
             key={i}
-            args={[o.size[0] / 2, o.size[1] / 2, o.size[2] / 2]}
+            args={[
+              o.size[0] / 2 + COLLIDER_PADDING,
+              o.size[1] / 2 + COLLIDER_PADDING,
+              o.size[2] / 2 + COLLIDER_PADDING,
+            ]}
             position={o.pos}
-            friction={0.6}
-            restitution={0.2}
+            friction={0.4}
+            restitution={0.55}
           />
         ))}
       </RigidBody>
       {obstacles.map((o, i) => (
-        <mesh key={i} position={o.pos} castShadow receiveShadow>
+        <mesh key={i} position={o.pos} scale={[VISUAL_SCALE, VISUAL_SCALE, VISUAL_SCALE]} castShadow receiveShadow>
           <boxGeometry args={o.size} />
           <meshStandardMaterial color={o.color} metalness={0.85} roughness={0.25} envMapIntensity={1.2} />
         </mesh>
@@ -295,23 +226,25 @@ function Obstacles({ sampled }: { sampled: THREE.Vector3[] }) {
 // ─── Track principal ───
 
 export function Track() {
+  const map = useMap();
   const SEGMENTS = 1000;
+  const halfRoad = map.roadWidth / 2;
+  const wallHeight = map.wallHeight ?? 3;
+  const wallThickness = map.wallThickness ?? 1.2;
 
   const { sampled, roadGeo, leftWall, rightWall, center } = useMemo(() => {
-    const { sampled } = buildTrackCurve(TRACK_POINTS, SEGMENTS);
-    const roadGeo = buildRoadGeometry(sampled, HALF_ROAD);
-    const leftWall = wallSegments(sampled, -1, HALF_ROAD);
-    const rightWall = wallSegments(sampled, 1, HALF_ROAD);
+    const { sampled } = buildTrackCurve(map.trackPoints, SEGMENTS);
+    const roadGeo = buildRoadGeometry(sampled, halfRoad);
+    const leftWall = wallSegments(sampled, -1, halfRoad, wallHeight, wallThickness);
+    const rightWall = wallSegments(sampled, 1, halfRoad, wallHeight, wallThickness);
     const center = getTrackCenter(sampled);
     return { sampled, roadGeo, leftWall, rightWall, center };
-  }, []);
+  }, [map.id, map.trackPoints, halfRoad, wallHeight, wallThickness]);
 
   return (
     <group>
-      {/* Suelo de hierba */}
       <GroundPlane cx={center.cx} cz={center.cz} w={center.halfW * 2.5} h={center.halfH * 2.5} />
 
-      {/* Collider del suelo */}
       <RigidBody type="fixed" colliders={false}>
         <CuboidCollider
           args={[center.halfW * 1.5, 0.1, center.halfH * 1.5]}
@@ -322,26 +255,19 @@ export function Track() {
         />
       </RigidBody>
 
-      {/* Asfalto */}
       <mesh geometry={roadGeo} receiveShadow position={[0, 0, 0]}>
         <meshStandardMaterial color="#1a1a1e" roughness={0.92} metalness={0} />
       </mesh>
 
-      {/* Línea central discontinua */}
       <CenterLine sampled={sampled} />
-
-      {/* Línea de meta */}
       <StartFinishLine sampled={sampled} />
+      <CurbStripes sampled={sampled} halfRoad={halfRoad} />
 
-      {/* Curbs rojo/blanco */}
-      <CurbStripes sampled={sampled} />
-
-      {/* Paredes */}
       <RigidBody type="fixed" colliders={false}>
         {leftWall.map((w, i) => (
           <CuboidCollider
             key={`l${i}`}
-            args={[WALL_THICKNESS / 2, WALL_HEIGHT / 2, w.halfLen]}
+            args={[wallThickness / 2, wallHeight / 2, w.halfLen]}
             position={w.pos}
             rotation={[0, w.rotY, 0]}
             friction={0.5}
@@ -351,7 +277,7 @@ export function Track() {
         {rightWall.map((w, i) => (
           <CuboidCollider
             key={`r${i}`}
-            args={[WALL_THICKNESS / 2, WALL_HEIGHT / 2, w.halfLen]}
+            args={[wallThickness / 2, wallHeight / 2, w.halfLen]}
             position={w.pos}
             rotation={[0, w.rotY, 0]}
             friction={0.5}
@@ -360,16 +286,14 @@ export function Track() {
         ))}
       </RigidBody>
 
-      {/* Vallas visuales (no castShadow para evitar rayas en la pista) */}
       {[...leftWall, ...rightWall].map((w, i) => (
         <mesh key={i} position={w.pos} rotation={[0, w.rotY, 0]} receiveShadow>
-          <boxGeometry args={[WALL_THICKNESS, WALL_HEIGHT, w.halfLen * 2]} />
+          <boxGeometry args={[wallThickness, wallHeight, w.halfLen * 2]} />
           <meshStandardMaterial color="#8a8f98" metalness={0.88} roughness={0.22} envMapIntensity={1.2} />
         </mesh>
       ))}
 
-      {/* Obstáculos */}
-      <Obstacles sampled={sampled} />
+      <Obstacles sampled={sampled} halfRoad={halfRoad} />
     </group>
   );
 }

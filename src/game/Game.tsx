@@ -3,6 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, Sky } from '@react-three/drei';
 import * as THREE from 'three';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
+import { MapProvider } from './MapContext';
 import { Car } from './Car';
 import { Track } from './Track';
 import { CameraFollow } from './CameraFollow';
@@ -47,13 +48,15 @@ function SunLight() {
 
 export function Game() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const resetRace = useGameStore((s) => s.resetRace);
 
   useEffect(() => {
+    resetRace();
     containerRef.current?.focus();
-  }, []);
+  }, [resetRace]);
 
   return (
-    <>
+    <MapProvider>
       <RaceManager />
       <div
         ref={containerRef}
@@ -90,6 +93,6 @@ export function Game() {
         </PhysicsWorld>
         </Canvas>
       </div>
-    </>
+    </MapProvider>
   );
 }

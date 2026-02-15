@@ -3,6 +3,7 @@ import { RigidBody, RapierRigidBody, CuboidCollider } from '@react-three/rapier'
 import { useFrame } from '@react-three/fiber';
 import { useKeyboardRef } from '../hooks/useKeyboard';
 import { useGameStore } from '../store/useGameStore';
+import { useMap } from './MapContext';
 import { Lamborghini } from './Lamborghini.tsx';
 import * as THREE from 'three';
 
@@ -30,9 +31,14 @@ const DRIFT_THRESHOLD = 15;       // velocidad lateral a partir de la que "sient
 export function Car() {
   const rigidBodyRef = useRef<RapierRigidBody>(null);
   const keysRef = useKeyboardRef();
-  const { setPlayerPosition, setVelocity, setSteerInput } = useGameStore();
+  const { setPlayerPosition, setVelocity, setSteerInput, setRaceStarted, completeLap, raceStarted } = useGameStore();
   const steerAngle = useRef(-Math.PI / 2); // mirando +X (dirección de la recta de meta)
   const smoothSteer = useRef(0);   // input suavizado -1..+1
+  const map = useMap();
+  const lastSideOfLine = useRef<'a' | 'b' | null>(null);
+  const lapContextOnA = useRef<{ minX: number | null; minZ: number | null }>({ minX: null, minZ: null });
+  const smoothedPosition = useRef(new THREE.Vector3(map.spawnPosition[0], map.spawnPosition[1], map.spawnPosition[2]));
+  const _posVec = useRef(new THREE.Vector3());
 
   useFrame((_, delta) => {
     const rb = rigidBodyRef.current;
@@ -159,16 +165,44 @@ export function Car() {
 
     const pos = rb.translation();
     const vel = rb.linvel();
-    setPlayerPosition([pos.x, pos.y, pos.z]);
+
+    // Suavizar posición para cámara/luz y reducir temblor (la física sigue usando pos real para vueltas)
+    _posVec.current.set(pos.x, pos.y, pos.z);
+    smoothedPosition.current.lerp(_posVec.current, 0.22);
+    setPlayerPosition([smoothedPosition.current.x, smoothedPosition.current.y, smoothedPosition.current.z]);
     setVelocity([vel.x, vel.y, vel.z]);
+
+    // ── Conteo de vueltas: usa la posición real de física
+    const currentSide = map.lap.getSideOfLine([pos.x, pos.y, pos.z]);
+    if (currentSide === 'a') {
+      const ctx = lapContextOnA.current;
+      ctx.minX = ctx.minX === null ? pos.x : Math.min(ctx.minX, pos.x);
+      ctx.minZ = ctx.minZ === null ? pos.z : Math.min(ctx.minZ, pos.z);
+    }
+
+    if (lastSideOfLine.current === null) {
+      lastSideOfLine.current = currentSide;
+    } else if (lastSideOfLine.current === 'a' && currentSide === 'b') {
+      if (map.lap.isValidLapCrossing(lapContextOnA.current)) {
+        if (!raceStarted) {
+          setRaceStarted(true);
+        } else {
+          completeLap();
+        }
+      }
+    }
+    lastSideOfLine.current = currentSide;
+    if (currentSide === 'b') {
+      lapContextOnA.current = { minX: null, minZ: null };
+    }
   });
 
   return (
     <RigidBody
       ref={rigidBodyRef}
       colliders={false}
-      position={[30, 0.55, 0]}
-      rotation={[0, -Math.PI / 2, 0]}
+      position={map.spawnPosition}
+      rotation={map.spawnRotation}
       mass={MASS}
       restitution={0.15}
       friction={0.9}
@@ -176,6 +210,7 @@ export function Car() {
       angularDamping={0.3}
       enabledRotations={[false, true, false]}
       canSleep={false}
+      ccd
     >
       <CuboidCollider args={[0.6, 0.25, 1.2]} position={[0, 0, 0]} />
       <Suspense fallback={null}>

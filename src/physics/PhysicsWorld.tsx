@@ -9,8 +9,8 @@ export function PhysicsWorld({ children }: PhysicsWorldProps) {
     <Physics
       gravity={[0, -9.81, 0]}
       timeStep={1 / 60}
-      numSolverIterations={16}
-      predictionDistance={0.1}
+      numSolverIterations={24}
+      predictionDistance={0.2}
     >
       {children}
     </Physics>
